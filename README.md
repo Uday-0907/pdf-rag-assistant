@@ -86,6 +86,7 @@ domain_rag_chatbot/
 |-- create_sample_documents.py    # Generator script for sample test PDFs
 |-- requirements.txt              # Production dependencies
 |-- README.md                     # Comprehensive documentation & Viva guide
+|-- project_report.md             # Formal project report (Deliverable #9)
 |-- .env.example                  # Environment configuration template
 |-- .gitignore                    # Git ignore rules (protects .env and indexes)
 |-- .streamlit/
