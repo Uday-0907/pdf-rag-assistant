@@ -131,16 +131,19 @@ def _to_lc_messages(chat_history: Optional[List[Dict]]) -> List:
 def condense_question(question: str, chat_history: Optional[List[Dict]]) -> str:
     """Rewrite a follow-up question into a standalone one using recent history.
 
-    Falls back to the original question if there is no history, or if the
-    rewrite comes back empty for any reason.
+    Falls back to the original question if there is no history, if an error
+    occurs, or if the rewrite comes back empty.
     """
     lc_history = _to_lc_messages(chat_history)
     if not lc_history:
         return question
 
-    chain = CONDENSE_QUESTION_PROMPT | get_llm() | StrOutputParser()
-    rewritten = chain.invoke({"chat_history": lc_history, "question": question}).strip()
-    return rewritten or question
+    try:
+        chain = CONDENSE_QUESTION_PROMPT | get_llm() | StrOutputParser()
+        rewritten = chain.invoke({"chat_history": lc_history, "question": question}).strip()
+        return rewritten or question
+    except Exception:
+        return question
 
 
 def generate_answer(question: str, vector_store, k: int = TOP_K, chat_history: Optional[List[Dict]] = None) -> Dict:
@@ -163,9 +166,10 @@ def generate_answer(question: str, vector_store, k: int = TOP_K, chat_history: O
     if not relevant:
         return {"answer": FALLBACK_MESSAGE, "sources": [], "refused": True}
 
-    chain = RAG_PROMPT | get_llm()
-    reply = chain.invoke({"context": _build_context(relevant), "question": standalone_question})
-    answer = _message_text(reply).strip() or FALLBACK_MESSAGE
+    # Module 6: Return clean string replies using StrOutputParser()
+    chain = RAG_PROMPT | get_llm() | StrOutputParser()
+    raw_answer = chain.invoke({"context": _build_context(relevant), "question": standalone_question})
+    answer = (raw_answer if isinstance(raw_answer, str) else _message_text(raw_answer)).strip() or FALLBACK_MESSAGE
 
     refused = REFUSAL_MARKER in answer.lower()
     return {

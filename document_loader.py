@@ -1,5 +1,5 @@
 # document_loader.py
-"""Module 1 (upload validation) and Module 2 (text extraction) of the project guidance."""
+"""Module 1 (upload validation), Module 2 (text extraction), and Module 3 (chunking)."""
 
 import io
 import os
@@ -8,11 +8,16 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
-# Section 12: limit uploaded file types and sizes.
+# Module 1: limit uploaded file types and sizes (Section 12 of guidance).
 MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "10"))
 MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024
+
+# Module 3: suggested beginner settings: chunk size 700-1000, overlap 100-150 characters.
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "120"))
 
 
 class PDFLoadError(Exception):
@@ -105,3 +110,24 @@ def extract_text_from_pdfs(uploaded_files) -> Tuple[List[Document], List[Dict], 
         loaded.append(info)
 
     return documents, loaded, skipped
+
+
+def split_documents(
+    documents: List[Document],
+    chunk_size: int = CHUNK_SIZE,
+    chunk_overlap: int = CHUNK_OVERLAP,
+) -> List[Document]:
+    """Module 3: Split page documents into overlapping chunks.
+
+    Maintains source and page metadata across all chunks.
+    Discards empty or whitespace-only chunks.
+    """
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len,
+        separators=["\n\n", "\n", ". ", " ", ""],
+    )
+    chunks = splitter.split_documents(documents)
+    return [chunk for chunk in chunks if chunk.page_content.strip()]
+

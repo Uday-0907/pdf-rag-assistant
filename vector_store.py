@@ -1,23 +1,33 @@
 # vector_store.py
-"""Module 3 (chunking) and Module 4 (embeddings + FAISS vector store)."""
+"""Module 4: Embeddings and FAISS vector store creation, persistence, and loading."""
 
 import json
+import os
 import shutil
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
-from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.embeddings import Embeddings
 
-# Suggested beginner setting from the guidance: chunk 700-1000, overlap 100-150 characters.
-CHUNK_SIZE = 800
-CHUNK_OVERLAP = 120
+# Graceful imports for FAISS
+try:
+    from langchain_community.vectorstores import FAISS
+except ImportError:
+    from langchain_community.vectorstores.faiss import FAISS
+
+# Graceful imports for HuggingFaceEmbeddings (langchain-huggingface / langchain-community)
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+except ImportError:
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+
+# Module 3 chunking logic is imported from document_loader
+from document_loader import CHUNK_OVERLAP, CHUNK_SIZE, split_documents
 
 # The guidance calls this model "all-MiniLM-L6-v2" (full Hugging Face id below).
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
 # Where the index is saved when the user chooses to keep it (see the sidebar checkbox).
 INDEX_DIR = Path(__file__).resolve().parent / "vector_store" / "saved_index"
@@ -25,28 +35,36 @@ MANIFEST_NAME = "manifest.json"
 
 
 @lru_cache(maxsize=1)
-def get_embeddings() -> HuggingFaceEmbeddings:
-    """Load the embedding model once per process (loading takes a few seconds).
+def get_embeddings() -> Embeddings:
+    """Load the embedding model once per process (cached for performance).
 
-    Embeddings are normalised to length 1, so distance in FAISS maps directly to
-    cosine similarity (see rag_pipeline.retrieve).
+    Default: Hugging Face sentence-transformers/all-MiniLM-L6-v2 (CPU, normalised).
+    Fallback: GoogleGenerativeAIEmbeddings if HuggingFace fails or configured.
+    Embeddings are normalised to length 1 so FAISS L2 distance maps directly to
+    cosine similarity.
     """
-    return HuggingFaceEmbeddings(
-        model_name=EMBEDDING_MODEL,
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    use_gemini = os.getenv("USE_GEMINI_EMBEDDINGS", "false").lower() in ("true", "1")
+    if use_gemini:
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
+        return GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
 
-def split_documents(documents: List[Document]) -> List[Document]:
-    """Split page documents into overlapping chunks. Metadata (source, page) is kept."""
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        length_function=len,
-    )
-    chunks = splitter.split_documents(documents)
-    return [chunk for chunk in chunks if chunk.page_content.strip()]
+    try:
+        return HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+    except Exception as exc:
+        # Graceful fallback to Gemini embeddings if sentence-transformers has issues
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if api_key:
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+            return GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+        raise RuntimeError(
+            f"Failed to load HuggingFace embedding model ({EMBEDDING_MODEL}): {exc}"
+        ) from exc
 
 
 def create_vector_store(documents: List[Document]) -> FAISS:
