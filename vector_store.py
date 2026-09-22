@@ -6,7 +6,7 @@ import os
 import shutil
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
@@ -67,12 +67,20 @@ def get_embeddings() -> Embeddings:
         ) from exc
 
 
-def create_vector_store(documents: List[Document]) -> FAISS:
-    """Chunk the documents, embed every chunk and build a FAISS index."""
-    chunks = split_documents(documents)
+def create_vector_store(
+    documents: List[Document],
+    chunk_size: int = CHUNK_SIZE,
+    chunk_overlap: int = CHUNK_OVERLAP,
+) -> Tuple[FAISS, int]:
+    """Chunk the documents, embed every chunk and build a FAISS index.
+
+    Returns (FAISS_index, total_chunk_count) so the UI can show the metric.
+    """
+    chunks = split_documents(documents, chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     if not chunks:
         raise ValueError("No text chunks could be created from the documents.")
-    return FAISS.from_documents(chunks, get_embeddings())
+    store = FAISS.from_documents(chunks, get_embeddings())
+    return store, len(chunks)
 
 
 # ---------------------------------------------------------------------------

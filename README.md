@@ -1,46 +1,49 @@
 # Domain-Specific RAG Chatbot for PDF Question Answering
 
-A production-ready chatbot that answers questions **strictly from uploaded PDF documents** (such as corporate policies, employee handbooks, course notes, manuals, legal documents, or training material). 
+A production-ready chatbot that answers questions **strictly from uploaded PDF documents** (such as corporate policies, employee handbooks, course notes, manuals, legal documents, or training material).
 
 Built following the official project guidance specification (**AI Major Project 3: Domain-Specific RAG Chatbot**). It features a robust Retrieval-Augmented Generation (RAG) architecture: it indexes documents into semantic vector embeddings, retrieves the most relevant passages via cosine similarity scoring, guards against hallucinations and prompt injection, and cites the **exact source document and page number** for every generated answer. If requested information is absent from the documents, it strictly refuses to fabricate facts.
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
 - **Module 1 (Document Upload & Validation):**
   - Multi-file PDF upload with `st.file_uploader`.
   - Content-type validation (`.pdf`), real magic byte verification (`%PDF-`), and file size enforcement (max 10 MB limit).
-  - Sidebar telemetry showing loaded file names, total page counts, and skipped empty pages.
-  - Dedicated **Clear Chat** and **Clear Documents** buttons to reset session state cleanly.
+  - Uploaded file list with file names and size indicators (KB / MB).
+  - Dedicated **Clear Chat** and **Reset Documents & Knowledge Base** buttons to reset session state cleanly.
 - **Module 2 (Page-by-Page Extraction):**
   - Robust text extraction using `pypdf`.
   - Preserves `source` (file name) and 1-based `page` metadata for every extracted segment.
   - Gracefully skips empty pages or unextractable text without crashing.
 - **Module 3 (Recursive Chunking):**
   - Intelligent text splitting using LangChain's `RecursiveCharacterTextSplitter`.
-  - Optimized chunk size (~800 characters) with overlap (~120 characters) to preserve contextual boundaries.
+  - **Dynamic chunk size and overlap** configurable at runtime via sidebar sliders.
+  - Optimized defaults: chunk size ~800 characters with overlap ~120 characters.
 - **Module 4 (Vector Store & Embeddings):**
   - Dense semantic embeddings generated with `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions, normalized).
   - High-performance vector indexing using `FAISS` (Facebook AI Similarity Search).
   - Local index persistence (`vector_store/saved_index/`) with manifest metadata, allowing instant reload across sessions.
 - **Module 5 (Scored Retrieval & Conversation Memory):**
   - Cosine similarity ranking via normalized FAISS distance conversion.
-  - Top-k retrieval (top 3–5 chunks).
+  - **Dynamic top-k retrieval** configurable at runtime via sidebar slider (1–10 chunks).
   - Strict minimum relevance threshold (`MIN_RELEVANCE = 0.20`): if no passages pass the threshold, unnecessary LLM calls are bypassed and the fallback message is returned directly.
   - Conversation memory reformulation (`condense_question`) rewriting ambiguous follow-up questions (e.g., *"And what about sick leave?"*) into standalone search queries.
 - **Module 6 (Grounded Answer Generation & Security):**
-  - Section 9 Guardrail Prompt enforcing strict groundedness:
-    > *"You are a document question-answering assistant. Answer only from the supplied context. If the answer is not available, say: 'I could not find this information in the uploaded documents.' Do not invent facts. Mention the source document and page number when available."*
+  - Section 9 Guardrail Prompt enforcing strict groundedness.
   - Defends against indirect prompt injection by isolating untrusted PDF content inside `<context>...</context>` XML tags with explicit adversarial defense instructions.
   - Clean string parsing via `StrOutputParser()`.
 - **Module 7 (Streamlit UI & Evaluation Suite):**
   - Interactive chat interface with expandable source attribution drawers (showing document name, page number, relevance %, and text snippet).
-  - Automated evaluation script (`tests/evaluate.py`) with a 16-question benchmark sheet (`tests/test_questions.csv`).
+  - **Live Metric Dashboard** showing indexed document count, total text chunks, and vector database type.
+  - **Architecture Expander** explaining the full RAG pipeline to users.
+  - **Model & API Settings panel** with API status indicator, optional API key override, Gemini model dropdown, and embedding model caption.
+  - Automated evaluation script (`tests/evaluate.py`) with a 15-question benchmark sheet (`tests/test_questions.csv`).
 
 ---
 
-## 🏗️ Architecture & Workflow
+## Architecture & Workflow
 
 ### Workflow Diagram
 
@@ -62,7 +65,7 @@ flowchart TD
         I -->|No| K[Raw User Question]
         J --> L[Query Embedding]
         K --> L
-        L --> M[FAISS Vector Search Top-4]
+        L --> M[FAISS Vector Search Top-k]
         M --> N{Relevance Score >= 0.20?}
         N -->|No Hits Pass| O[Bypass LLM: Return Fallback Message]
         N -->|Pass| P[Inject into Prompt within <context> Tags]
@@ -74,7 +77,44 @@ flowchart TD
 
 ---
 
-## 📁 Project Structure
+## Sidebar UI
+
+### Document Operations & Uploads
+- Multi-file PDF uploader (max 10 MB per file).
+- Uploaded file list with names and size indicators.
+- **Process Documents** primary button.
+- Optional "Save index on this computer for reuse" checkbox.
+- Indexed documents list with page counts and skipped empty pages.
+
+### Dynamic RAG Parameters
+- **Chunk Size** slider: 200–2000 characters (default 800, step 50).
+- **Chunk Overlap** slider: 0–300 characters (default 120, step 10).
+- **Top-k** slider: 1–10 chunks (default 4, step 1).
+
+### Model & API Settings
+- **API Status Indicator**: green badge when configured, warning when missing.
+- **API Key Override**: masked password input for a custom Gemini key.
+- **Gemini Model Dropdown**: `gemini-1.5-flash` (default), `gemini-1.5-pro`, `gemini-2.0-flash`.
+- **Embedding Model** caption: `sentence-transformers/all-MiniLM-L6-v2`.
+
+### Bottom Controls
+- **Clear Chat** — clears conversation history.
+- **Reset Documents & Knowledge Base** — clears vectors, disk index, and all state.
+
+---
+
+## Main Page Layout
+
+- **Title**: `📄 Domain-Specific RAG Chatbot`
+- **Subheader**: `Grounded PDF Question Answering with Page-Level Source Attribution`
+- **Responsible AI Disclaimer** alert box.
+- **Architecture Expander**: `ℹ️ How this RAG System Works (PDF Guidance Architecture)`
+- **Live Metric Dashboard**: 3 metric cards (Indexed Documents, Total Text Chunks, Vector Database).
+- **Chat Interface** with source attribution (file name, page number, relevance %, snippet).
+
+---
+
+## Project Structure
 
 ```
 domain_rag_chatbot/
@@ -97,14 +137,14 @@ domain_rag_chatbot/
 |-- vector_store/
 |   `-- saved_index/              # Serialized FAISS index & manifest.json (when persisted)
 `-- tests/
-    |-- test_questions.csv        # 16-question benchmark dataset
+    |-- test_questions.csv        # 15-question benchmark dataset
     |-- results.csv               # Automated evaluation benchmark results
     `-- evaluate.py               # Evaluation benchmark runner script
 ```
 
 ---
 
-## ⚙️ Installation & Setup
+## Installation & Setup
 
 ### 1. Prerequisites
 - Python 3.10, 3.11, or 3.12.
@@ -139,16 +179,18 @@ cp .env.example .env
 Edit `.env`:
 ```env
 GOOGLE_API_KEY=your_google_ai_studio_api_key_here
-GEMINI_MODEL=gemini-3.6-flash
+GEMINI_MODEL=gemini-1.5-flash
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 TOP_K=4
 MIN_RELEVANCE=0.20
 MAX_FILE_MB=10
 ```
 
+> You can also paste an API key directly in the sidebar under **Model & API Settings** without editing `.env`.
+
 ---
 
-## 🚀 Running the Application
+## Running the Application
 
 ### Launch Streamlit App
 ```bash
@@ -164,9 +206,9 @@ python create_sample_documents.py
 
 ---
 
-## 🧪 Testing & Evaluation
+## Testing & Evaluation
 
-The repository includes a 16-question evaluation benchmark suite in `tests/test_questions.csv` covering:
+The repository includes a 15-question evaluation benchmark suite in `tests/test_questions.csv` covering:
 1. **In-Domain Direct Queries** (e.g., Leave Policy, Core Collaboration Hours, Probation).
 2. **In-Domain Paraphrased Queries** (e.g., Late arrival consequences, sick days).
 3. **Conversational Follow-ups** (e.g., *"And what about bereavement leave?"*).
@@ -182,13 +224,19 @@ python tests/evaluate.py
 ```bash
 python tests/evaluate.py --llm
 ```
+
+### Specify a Different Model
+```bash
+python tests/evaluate.py --llm --model gemini-2.0-flash
+```
+
 Output results will be printed to the console and saved to `tests/results.csv`.
 
 ---
 
-## 🛡️ Responsible AI & Security Controls
+## Responsible AI & Security Controls
 
-- **API Key Protection:** Secrets are never hardcoded and are loaded strictly from `.env` or Streamlit Cloud secrets. `.env` is git-ignored.
+- **API Key Protection:** Secrets are never hardcoded and are loaded strictly from `.env`, Streamlit Cloud secrets, or the sidebar override field. `.env` is git-ignored.
 - **Upload Hardening:** Enforces a 10 MB file ceiling, validates `.pdf` extension, and inspects magic header bytes (`%PDF-`).
 - **Prompt Injection Defense:** Untrusted document context is enclosed inside `<context>` tags with explicit instructions ordering the model to treat context as raw data and reject any instructions attempting to hijack chatbot rules.
 - **Strict Hallucination Prevention:** The prompt explicitly instructs the LLM not to invent facts and mandates the exact refusal message:
@@ -198,7 +246,7 @@ Output results will be printed to the console and saved to `tests/results.csv`.
 
 ---
 
-## 🎓 Viva Questions & Answers (Section 14 Guide)
+## Viva Questions & Answers (Section 14 Guide)
 
 ### 1. What is RAG and why is it used?
 > **Answer:** Retrieval-Augmented Generation (RAG) is an AI architecture that enhances Large Language Models by retrieving relevant factual information from external knowledge bases (e.g., domain-specific PDFs) before generating a response. It solves two major LLM weaknesses: knowledge cutoffs (lack of private/recent data) and hallucinations (fabricating believable falsehoods).

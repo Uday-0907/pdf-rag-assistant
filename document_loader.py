@@ -12,7 +12,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
 # Module 1: limit uploaded file types and sizes (Section 12 of guidance).
-MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "10"))
+MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "200"))
 MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024
 
 # Module 3: suggested beginner settings: chunk size 700-1000, overlap 100-150 characters.

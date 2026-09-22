@@ -19,7 +19,7 @@ load_dotenv()
 
 from document_loader import load_pdf_bytes, split_documents
 from prompt import FALLBACK_MESSAGE, REFUSAL_MARKER
-from rag_pipeline import generate_answer, retrieve
+from rag_pipeline import DEFAULT_MODEL, generate_answer, retrieve
 from vector_store import create_vector_store
 
 
@@ -39,12 +39,12 @@ def build_test_vector_store():
         all_docs.extend(docs)
 
     print(f"Creating chunks and building FAISS vector store with {len(all_docs)} page documents...")
-    vector_store = create_vector_store(all_docs)
-    print("Vector store ready.\n")
+    vector_store, chunk_count = create_vector_store(all_docs)
+    print(f"Vector store ready ({chunk_count} chunks).\n")
     return vector_store
 
 
-def run_evaluation(use_llm: bool = False, delay: float = 1.0):
+def run_evaluation(use_llm: bool = False, delay: float = 1.0, model: str = DEFAULT_MODEL):
     csv_path = Path(__file__).resolve().parent / "test_questions.csv"
     results_path = Path(__file__).resolve().parent / "results.csv"
 
@@ -122,7 +122,7 @@ def run_evaluation(use_llm: bool = False, delay: float = 1.0):
             try:
                 # Supply history if follow-up
                 hist_to_pass = conversation_history if "follow-up" in category.lower() else []
-                res = generate_answer(question, vector_store, chat_history=hist_to_pass)
+                res = generate_answer(question, vector_store, chat_history=hist_to_pass, model=model)
                 answer_text = res["answer"]
                 refused = res["refused"]
             except Exception as exc:
@@ -196,6 +196,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate Domain-Specific RAG Chatbot")
     parser.add_argument("--llm", action="store_true", help="Include LLM answer generation with Gemini")
     parser.add_argument("--delay", type=float, default=1.0, help="Delay in seconds between LLM calls")
+    parser.add_argument("--model", type=str, default=DEFAULT_MODEL, help="Gemini model name")
     args = parser.parse_args()
 
-    run_evaluation(use_llm=args.llm, delay=args.delay)
+    run_evaluation(use_llm=args.llm, delay=args.delay, model=args.model)
